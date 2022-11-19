@@ -1,7 +1,8 @@
-import threading
 import multiprocessing
+import threading
 import time
 from typing import Dict
+
 import matplotlib.pyplot as plt
 
 
