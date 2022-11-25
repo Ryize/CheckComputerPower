@@ -11,6 +11,8 @@ class Stats:
     _thread: Dict = {}
     _process: Dict = {}
     _time: int = 5
+    _max_process_delta = 4
+    _mult_number = 25000
 
     @property
     def single(self):
@@ -53,13 +55,35 @@ class Stats:
             file_data[index] = str(data)
             file.write("\n".join(file_data))
 
+    @property
+    def max_process_delta(self):
+        return self._max_process_delta
 
-def _single(func, time_start: float, stats: Stats, *args, **kwargs):
+    @max_process_delta.setter
+    def max_process_delta(self, value):
+        self._max_process_delta = value
+
+    @property
+    def mult_number(self):
+        return self._mult_number
+
+    @mult_number.setter
+    def mult_number(self, value):
+        self._mult_number = value
+
+    @property
+    def thread(self):
+        return self._thread
+
+
+def single(func, time_start: float, stats: Stats, *args, **kwargs):
     delta = 0
     while time.time() - time_start <= stats.time:
         func(*args, **kwargs)
         stats.single = time.time() - time_start - delta
         delta = time.time() - time_start
+    single = stats._single
+    single['point'] = sum(single.values()) / len(single.values()) * 10000 // 1
 
 
 def thread(func, time_start: float, stats: Stats, *args, **kwargs):
@@ -70,21 +94,23 @@ def thread(func, time_start: float, stats: Stats, *args, **kwargs):
         thread.start()
     while True:
         if all(list(map(lambda i: i != 0, list(stats._thread.values())))):
+            thread = stats._thread
+            thread['point'] = sum(thread.values()) / len(thread.values()) * 10000 // 1
             break
 
 
 def _thread(func, time_start: float, stats: Stats, *args, **kwargs):
     last_index = max(stats._thread.keys(), default=0)
-    stats._thread[last_index + 1] = 0
+    stats.thread[last_index + 1] = 0
     delta = time.time()
     func(*args, **kwargs)
-    stats._thread[last_index + 1] = time.time() - delta
+    stats.thread[last_index + 1] = time.time() - delta
 
 
 def process(func, stats, *args, **kwargs):
     time_start = time.time()
     while time.time() - time_start <= stats._time:
-        if len(multiprocessing.active_children()) < multiprocessing.cpu_count() * 4:
+        if len(multiprocessing.active_children()) < multiprocessing.cpu_count() * Stats._max_process_delta:
             process = multiprocessing.Process(
                 target=_process, args=(func, time_start, stats, *args), kwargs=kwargs
             )
@@ -95,6 +121,9 @@ def process(func, stats, *args, **kwargs):
             try:
                 file.read().split()[-1]
             except IndexError:
+                process = stats._process
+                print(stats._process)
+                stats._process['point'] = sum(process.values()) / len(process.values()) * 10000 // 1
                 break
 
 
@@ -107,24 +136,29 @@ def _process(func, time_start: float, stats: Stats, *args, **kwargs):
 
 
 def draw_graph(stats):
-    single, thread, _process = stats.get_stats()
+    single, thread, process = stats.get_stats()
     fig, ax = plt.subplots(3)
     fig.suptitle("Тест мощности компьютера\n")
     fig.tight_layout()
 
-    ax[0].set_title("Базовый тест")
-    ax[0].plot(list(single.keys()), list(single.values()))
+    _draw_plt(ax[0], single, 'Базовый тест')
+    _draw_plt(ax[1], thread, 'Одноядерный тест')
+    _draw_plt(ax[2], process, 'Многоядерный тест')
 
-    ax[1].set_title("Одноядерный тест")
-    ax[1].plot(list(thread.keys()), list(thread.values()))
-
-    ax[2].set_title("Многоядерный тест")
-    ax[2].plot(list(range(len(_process))), list(map(float, _process)))
     plt.show()
 
 
+def _draw_plt(ax, obj: dict, text: str):
+    try:
+        ax.set_title(f"{text}")
+        del obj['point']
+        ax.plot(list(obj.keys()), list(obj.values()))
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
+
+
 def timeit(mode: str = "single"):
-    mode_list = {"single": _single, "thread": thread, "process": process}
+    mode_list = {"single": single, "thread": thread, "process": process}
 
     def timeit_decorator(func):
         def wrapper(*args, **kwargs):
@@ -142,22 +176,25 @@ def timeit(mode: str = "single"):
 
 @timeit("single")
 def single_check():
-    for i in range(25000):
-        _ = 2**i
+    for i in range(Stats._mult_number):
+        _ = 2 ** i
 
 
 @timeit("thread")
 def thread_check():
-    for i in range(25000):
-        _ = 2**i
+    for i in range(Stats._mult_number):
+        _ = 2 ** i
 
 
 def process_check():
-    for i in range(25000):
-        _ = 2**i
+    for i in range(Stats._mult_number):
+        _ = 2 ** i
 
 
 if __name__ == "__main__":
+    Stats.max_process_delta = 5
+    Stats.time = 10
+    Stats.mult_number = 1
     print("Базовый тест!")
     single_check()
     print("Одноядерный тест!")
